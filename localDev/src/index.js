@@ -7,12 +7,12 @@ var TEXTURE_DIMENSIONS = {
 };
 
 var getRandomColor = function() {
-    var letters = '0123456789ABCDEF';
-    var color = '#';
-    for (var i = 0; i < 6; i++ ) {
-        color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
+	var letters = '0123456789ABCDEF';
+	var color = '#';
+	for (var i = 0; i < 6; i++) {
+		color += letters[Math.floor(Math.random() * 16)];
+	}
+	return color;
 };
 
 var Rectangle = function(left, top, right, bottom) {
@@ -42,6 +42,9 @@ var ImageItem = function(id) {
 	this.width = -1;
 	this.height = -1;
 	this.id = id;
+	this.uvInfos = [];
+	this.minWorld = null;
+	this.maxWorld = null;
 };
 
 var Node = function() {
@@ -50,10 +53,13 @@ var Node = function() {
 	this.image = null;
 };
 
-ImageItem.Padding = 15; // Padding is on bottom and left
+ImageItem.Padding = 0; // Padding is on bottom and left
 
 Node.prototype.getAllNodes = function() {
-	var nodes = [this];
+	var nodes = [];
+	if (this.image) {
+		nodes.push(this);
+	}
 	if (this.child[0]) {
 		nodes = nodes.concat(this.child[0].getAllNodes());
 	}
@@ -78,7 +84,7 @@ Node.prototype.insert = function(img) {
 		if (newNode) {
 			return newNode;
 		}
-		
+
 		return this.child[1].insert(img);
 	} else {
 		if (this.image) {
@@ -91,8 +97,6 @@ Node.prototype.insert = function(img) {
 
 		if (this.rc.perfectFit(img)) {
 			this.image = img;
-			console.log(img);
-			console.log(this.rc);
 			return this;
 		}
 
@@ -107,7 +111,7 @@ Node.prototype.insert = function(img) {
 			this.child[1].rc = new Rectangle(this.rc.left + img.width, this.rc.top, this.rc.right, this.rc.bottom);
 		} else {
 			this.child[0].rc = new Rectangle(this.rc.left, this.rc.bottom + img.height - 1, this.rc.right, this.rc.bottom);
-			this.child[1].rc = new Rectangle(this.rc.left, this.rc.top, this.rc.right,this.rc.bottom + img.height);
+			this.child[1].rc = new Rectangle(this.rc.left, this.rc.top, this.rc.right, this.rc.bottom + img.height);
 		}
 
 		return this.child[0].insert(img);
@@ -115,29 +119,29 @@ Node.prototype.insert = function(img) {
 };
 
 var createDebugTexture = function(root, scene) {
-    var size = TEXTURE_DIMENSIONS.width;
+	var size = TEXTURE_DIMENSIONS.width;
 
-    var debugTexture;
-    debugTexture = new BABYLON.DynamicTexture("debug", size, scene, false, BABYLON.Texture.NEAREST_SAMPLINGMODE);
-    debugTexture.wrapU = BABYLON.Texture.WRAP_ADDRESSMODE;
-    debugTexture.wrapV = BABYLON.Texture.WRAP_ADDRESSMODE;
+	var debugTexture;
+	debugTexture = new BABYLON.DynamicTexture("debug", size, scene, false, BABYLON.Texture.NEAREST_SAMPLINGMODE);
+	debugTexture.wrapU = BABYLON.Texture.WRAP_ADDRESSMODE;
+	debugTexture.wrapV = BABYLON.Texture.WRAP_ADDRESSMODE;
 
-    var context = debugTexture.getContext();
+	var context = debugTexture.getContext();
 
-    var nodes = root.getAllNodes();
+	var nodes = root.getAllNodes();
 
-    for (var i = 0; i < nodes.length; i++) {
-    	var node = nodes[i];
-    	if (!node.image) {
-    		continue;
-    	}
-    	context.fillStyle = node.image.id;
-    	context.fillRect(node.rc.left + ImageItem.Padding, node.rc.bottom + ImageItem.Padding, node.image.width - ImageItem.Padding, node.image.height - ImageItem.Padding);
-    }
+	for (var i = 0; i < nodes.length; i++) {
+		var node = nodes[i];
+		if (!node.image) {
+			continue;
+		}
+		context.fillStyle = node.image.id;
+		context.fillRect(node.rc.left + ImageItem.Padding, node.rc.bottom + ImageItem.Padding, node.image.width - ImageItem.Padding, node.image.height - ImageItem.Padding);
+	}
 
-    debugTexture.update(false);
+	debugTexture.update(false);
 
-    return debugTexture;
+	return debugTexture;
 };
 
 var createScene = function() {
@@ -146,15 +150,15 @@ var createScene = function() {
 	camera.attachControl(canvas, true);
 
 	var box, material;
-	for (var i = 0; i < 3; i++) {
-		for (var j = 0; j < 3; j++) {
-			box = BABYLON.Mesh.CreateSphere("test", 5, 8, scene);
+	for (var i = 0; i < 1; i++) {
+		for (var j = 0; j < 1; j++) {
+			box = BABYLON.Mesh.CreateCylinder("test", 10, 10, 10, 3, 1, scene);
 			material = new BABYLON.StandardMaterial("mat" + i + j, scene);
 			material.emissiveColor.copyFromFloats(0.7, 0.7, 0.7);
-			box.rotation.x = Math.sin(j*i);
-			box.rotation.z = Math.cos(i + j);
-			box.position.x += i*5 - 12.5;
-			box.position.z += j*5 - 12.5;
+			// box.rotation.x = Math.sin(j * i);
+			// box.rotation.z = Math.cos(i + j);
+			box.position.x += i * 5 - 12.5;
+			box.position.z += j * 5 - 12.5;
 			box.material = material;
 		}
 	}
@@ -162,7 +166,7 @@ var createScene = function() {
 	var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, -1, 0), scene);
 
 	uv1ToUv2(scene);
-
+	scene.debugLayer.show();
 	return scene;
 };
 
@@ -172,7 +176,7 @@ var turnVerticesToDisks = function() {
 
 var uv1ToUv2 = function(scene) {
 	var meshes = scene.meshes;
-	var density = 25; // pixel / scene unit
+	var density = 18; // pixel / scene unit
 
 	var root = Node.CreateRoot();
 
@@ -180,22 +184,46 @@ var uv1ToUv2 = function(scene) {
 		var mesh = meshes[i];
 		var vertices = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
 		var indices = mesh.getIndices();
+		console.log("Indices current Length : " + indices.length);
+		console.log("Vertices current Length : " + vertices.length);
 		var normals = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
 
 		var uv2s = [];
+		var worldMatrix = mesh.getWorldMatrix();
 
-		var directions = sortFacesByNormal(vertices, indices);
+		for (var j = 0; j < vertices.length / 3; j++) {
+			var vertex = new BABYLON.Vector3(vertices[j * 3], vertices[j * 3 + 1], vertices[j * 3 + 2]);
+
+			var worldVertex = BABYLON.Vector3.TransformCoordinates(vertex, worldMatrix);
+			vertices[j * 3] = worldVertex.x;
+			vertices[j * 3 + 1] = worldVertex.y;
+			vertices[j * 3 + 2] = worldVertex.z;
+		}
+
+		var directions = sortFacesByNormal(vertices, indices, normals);
 		var uvIslands = projectInUvSpace(directions, indices, vertices);
 		var images = makeImagesFromUvIslands(uvIslands, density);
 
 		for (var j = 0; j < images.length; j++) {
 			root.insert(images[j]);
 		}
+
+		updateUv2sFromIslands(root, mesh, density, vertices, normals);
+		console.log("Effective faces  : " + indices.length / 3);
+		console.log("Faces processed  : " + faceCount);
+		console.log("Faces in UV Islands : " + facesInIsland);
+		console.log("Indices new Length : " + indices.length);
+		console.log("Vertices new Length : " + vertices.length);
+		console.log("Vertices creation : " + vertexCreation);
 	}
 
-	console.log(root);
 
 	var debugTexture = createDebugTexture(root, scene);
+
+	for (var i = 0; i < meshes.length; i++) {
+		var mesh = meshes[i];
+		mesh.material.diffuseTexture = new BABYLON.Texture("./test.jpeg", scene);
+	}
 
 	var debugBox = BABYLON.Mesh.CreateBox("debugbox", 10, scene);
 	debugBox.position.y += 15;
@@ -203,27 +231,71 @@ var uv1ToUv2 = function(scene) {
 	debugBox.material.diffuseTexture = debugTexture;
 };
 
+var updateUv2sFromIslands = function(root, mesh, density, vertices, normals) {
+	var nodes = root.getAllNodes();
+	var indices = mesh.getIndices();
+	var uv2s = [];
+
+	for (var i = 0; i < nodes.length; i++) {
+		var uvInfos = nodes[i].image.uvInfos;
+		var offsetX = (nodes[i].rc.left + ImageItem.Padding) / TEXTURE_DIMENSIONS.width;
+		var offsetY = (nodes[i].rc.bottom + ImageItem.Padding) / TEXTURE_DIMENSIONS.height;
+		var width = nodes[i].rc.getWidth() / TEXTURE_DIMENSIONS.width;
+		var height = nodes[i].rc.getHeight() / TEXTURE_DIMENSIONS.height;
+		var minWorld = nodes[i].image.minWorld;
+		var maxWorld = nodes[i].image.maxWorld;
+
+		console.log(offsetX, offsetY);
+		for (var j = 0; j < uvInfos.length; j++) {
+			var trueUv = uvInfos[j].uv.subtract(minWorld).multiplyInPlace(new BABYLON.Vector2(1 / TEXTURE_DIMENSIONS.width, 1 / TEXTURE_DIMENSIONS.height)).scaleInPlace(density);
+			if (uv2s[uvInfos[j].index * 2] === undefined) {
+				uv2s[uvInfos[j].index * 2] = trueUv.x + offsetX;
+				uv2s[uvInfos[j].index * 2 + 1] = trueUv.y + offsetY;				
+			} else {
+				console.log("duplicate value of uv");
+			}
+
+			if (trueUv.x < 0 || trueUv.x > width || trueUv.y < 0 || trueUv > height) {
+				console.log("out of bounds");
+			}
+		}
+	}
+
+	mesh.setVerticesData(BABYLON.VertexBuffer.UVKind, uv2s);
+	mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, vertices);
+	mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+	console.log("uv2s Length : " + uv2s.length);
+
+}
+
 var makeImagesFromUvIslands = function(uvIslands, density) {
 	var images = [];
 
 	for (var i = 0; i < uvIslands.length; i++) {
 		for (var j = 0; j < uvIslands[i].length; j++) {
+			if (!uvIslands[i][j].length) {
+				console.warn("problem with uv islands")
+				continue;
+			}
 			var boundingBox = {
 				min: new BABYLON.Vector2(+Infinity, +Infinity),
 				max: new BABYLON.Vector2(-Infinity, -Infinity),
 			};
 			var img = new ImageItem(getRandomColor());
 
-			for (var k = 0; k < uvIslands[i][j].length; k++) { 
+			for (var k = 0; k < uvIslands[i][j].length; k++) {
 				var uv = uvIslands[i][j][k].uv;
 				boundingBox.min.x = Math.min(uv.x, boundingBox.min.x);
 				boundingBox.max.x = Math.max(uv.x, boundingBox.max.x);
 				boundingBox.min.y = Math.min(uv.y, boundingBox.min.y);
 				boundingBox.max.y = Math.max(uv.y, boundingBox.max.y);
+				img.uvInfos.push(uvIslands[i][j][k]);
 			}
 
 			img.width = Math.ceil((boundingBox.max.x - boundingBox.min.x) * density) + ImageItem.Padding;
 			img.height = Math.ceil((boundingBox.max.y - boundingBox.min.y) * density) + ImageItem.Padding;
+			img.minWorld = boundingBox.min;
+			img.maxWorld = boundingBox.max;
 			images.push(img);
 		}
 	}
@@ -231,14 +303,16 @@ var makeImagesFromUvIslands = function(uvIslands, density) {
 	return images;
 };
 
+var facesInIsland = 0;
+var vertexCreation = 0;
 var projectInUvSpace = function(directions, indices, vertices) {
 	var dirVectors = [
-		[ new BABYLON.Vector3(0, 1, 0), new BABYLON.Vector3(0, 0, 1) ], // px
-		[ new BABYLON.Vector3(0, 1, 0), new BABYLON.Vector3(0, 0, 1) ], // nx
-		[ new BABYLON.Vector3(1, 0, 0), new BABYLON.Vector3(0, 0, 1) ], // py
-		[ new BABYLON.Vector3(1, 0, 0), new BABYLON.Vector3(0, 0, 1) ], // ny
-		[ new BABYLON.Vector3(1, 0, 0), new BABYLON.Vector3(0, 1, 0) ], // pz
-		[ new BABYLON.Vector3(1, 0, 0), new BABYLON.Vector3(0, 1, 0) ], // nz
+		[new BABYLON.Vector3(0, 1, 0), new BABYLON.Vector3(0, 0, 1)], // px
+		[new BABYLON.Vector3(0, 1, 0), new BABYLON.Vector3(0, 0, 1)], // nx
+		[new BABYLON.Vector3(0, 0, 1), new BABYLON.Vector3(1, 0, 0)], // py
+		[new BABYLON.Vector3(0, 0, 1), new BABYLON.Vector3(1, 0, 0)], // ny
+		[new BABYLON.Vector3(0, 1, 0), new BABYLON.Vector3(1, 0, 0)], // pz
+		[new BABYLON.Vector3(0, 1, 0), new BABYLON.Vector3(1, 0, 0)], // nz
 	];
 
 	var result = [];
@@ -249,9 +323,9 @@ var projectInUvSpace = function(directions, indices, vertices) {
 			result[i].push([]);
 			for (var k = 0; k < directions[i][j].faces.length; k++) {
 				var faceId = directions[i][j].faces[k];
-				var i0 = indices[faceId];
-				var i1 = indices[faceId + 1];
-				var i2 = indices[faceId + 2];
+				var i0 = indices[faceId * 3];
+				var i1 = indices[faceId * 3 + 1];
+				var i2 = indices[faceId * 3 + 2];
 
 				var v0 = new BABYLON.Vector3(vertices[i0 * 3], vertices[i0 * 3 + 1], vertices[i0 * 3 + 2]);
 				var v1 = new BABYLON.Vector3(vertices[i1 * 3], vertices[i1 * 3 + 1], vertices[i1 * 3 + 2]);
@@ -260,7 +334,17 @@ var projectInUvSpace = function(directions, indices, vertices) {
 				var uv0 = new BABYLON.Vector2(BABYLON.Vector3.Dot(v0, dirVectors[i][0]), BABYLON.Vector3.Dot(v0, dirVectors[i][1]));
 				var uv1 = new BABYLON.Vector2(BABYLON.Vector3.Dot(v1, dirVectors[i][0]), BABYLON.Vector3.Dot(v1, dirVectors[i][1]));
 				var uv2 = new BABYLON.Vector2(BABYLON.Vector3.Dot(v2, dirVectors[i][0]), BABYLON.Vector3.Dot(v2, dirVectors[i][1]));
-				result[i][j].push({ uv : uv0, index : i0 }, { uv : uv1, index: i1 }, { uv : uv2, index: i2 });
+				result[i][j].push({
+					uv: uv0,
+					index: i0
+				}, {
+					uv: uv1,
+					index: i1
+				}, {
+					uv: uv2,
+					index: i2
+				});
+				facesInIsland++;
 			}
 		}
 	}
@@ -285,11 +369,11 @@ FaceBatch.prototype.mergeInto = function(otherBatch, batchCache, indices) {
 		return;
 	}
 
-	for (var i = 0; i < this.faces.length; i++) {
+	for (var i = this.faces.length - 1; i >= 0; i--) {
 		otherBatch.faces.push(this.faces[i]);
-		var i0 = indices[this.faces[i]*3];
-		var i1 = indices[this.faces[i]*3 + 1];
-		var i2 = indices[this.faces[i]*3 + 2];
+		var i0 = indices[this.faces[i] * 3];
+		var i1 = indices[this.faces[i] * 3 + 1];
+		var i2 = indices[this.faces[i] * 3 + 2];
 		batchCache[i0] = otherBatch;
 		batchCache[i1] = otherBatch;
 		batchCache[i2] = otherBatch;
@@ -298,57 +382,102 @@ FaceBatch.prototype.mergeInto = function(otherBatch, batchCache, indices) {
 };
 
 FaceBatch.ID = 0;
-
-var pushFace = function(directions, directionId, batchCache, faceId, i0, i1, i2, vertices, indices) {
+var faceCount = 0;
+var pushFace = function(directions, directionId, batchCache, duplicateCache, faceId, i0, i1, i2, vertices, indices, normals) {
 	var batch;
 	var tempFace = [i0, i1, i2];
 
-	if (batchCache[i0] === undefined && batchCache[i1] === undefined && batchCache[i2] === undefined) {
-		batch = new FaceBatch();
-		directions[directionId].push(batch);
-		batch.directionId = directionId;
-	} else {
-		for (var i = 0; i < 3 ; i++) {
-			if (batchCache[tempFace[i]] !== undefined) {
-				// tempFace[i] already has a batch, we check it's the same direction
-				if (batchCache[tempFace[i]].directionId !== directionId) {
+	for (var i = 0; i < 3; i++) {
+		if (batchCache[tempFace[i]] !== undefined) {
+			// tempFace[i] already has a batch, we check it's the same direction
+			if (batchCache[tempFace[i]].directionId !== directionId) {
+				var duplicateIndex = -1;
+				if (duplicateCache[tempFace[i]]) {
+					for (var j = 0; j < duplicateCache[tempFace[i]].length; j++) {
+						if (duplicateCache[tempFace[i]][j].directionId === directionId) {
+							// Use this vertex
+							console.log("reusing duplicate vertex");
+							duplicateIndex = duplicateCache[tempFace[i]][j].index;
+
+							if (!batchCache[duplicateIndex]) {
+								console.warn("nonsense");
+
+							}
+							if (batch) {
+								batchCache[duplicateIndex].mergeInto(batch, batchCache, indices);
+								if (batch !== batchCache[duplicateIndex]) {
+									var id = directions[directionId].indexOf(batchCache[duplicateIndex]);
+									if (id === -1) {
+										console.warn("Batch not found ");
+									}
+									directions[directionId].splice(id, 1);
+								}
+							} else {
+								batch = batchCache[duplicateIndex];
+							}
+
+							break;
+						}
+					}
+				}
+
+				if (duplicateIndex === -1) {
 					// It's not, we have to duplicate the vertex
 					var vertex = new BABYLON.Vector3(vertices[tempFace[i] * 3], vertices[tempFace[i] * 3 + 1], vertices[tempFace[i] * 3 + 2]);
+					var normal = new BABYLON.Vector3(normals[tempFace[i] * 3], normals[tempFace[i] * 3 + 1], normals[tempFace[i] * 3 + 2]);
 					vertices.push(vertex.x, vertex.y, vertex.z);
-					indices[faceId * 3 + i] = vertices.length / 3 - 1;
-					tempFace[i] = indices[faceId * 3 + i]
+					normals.push(normal.x, normal.y, normal.z);
+					if (!duplicateCache[tempFace[i]]) {
+						duplicateCache[tempFace[i]] = [];
+					}
+					duplicateIndex = vertices.length / 3 - 1;
+					duplicateCache[tempFace[i]].push({
+						directionId: directionId,
+						index: duplicateIndex
+					});
+					vertexCreation++;
+					duplicateCache[duplicateIndex] = [{
+						directionId: directionId,
+						index: tempFace[i]
+					}];
+				}
 
-					console.log("vertex duplication");
-
-					// and create a new batch
-					if (!batch) {
-						batch = new FaceBatch();
-						directions[directionId].push(batch);
-						batch.directionId = directionId;
+				indices[faceId * 3 + i] = duplicateIndex;
+				tempFace[i] = duplicateIndex;
+			} else {
+				// It is ! we can use this facebatch to make connexity
+				// But if we already have a batch, we can merge them
+				if (batch) {
+					batchCache[tempFace[i]].mergeInto(batch, batchCache, indices);
+					if (batch !== batchCache[tempFace[i]]) {
+						var id = directions[directionId].indexOf(batchCache[tempFace[i]]);
+						if (id === -1) {
+							console.warn("Batch not found ");
+						}
+						directions[directionId].splice(id, 1);
 					}
 				} else {
-					// It is ! we can use this facebatch to make connexity
-					// But if we already have a batch, we can merge them
-					if (batch) {
-						batchCache[tempFace[i]].mergeInto(batch, batchCache, indices);
-						if (batch !== batchCache[tempFace[i]]) {
-							directions[directionId].splice(directions[directionId].indexOf(batchCache[tempFace[i]]), 1);
-						}
-					} else {
-						batch = batchCache[tempFace[i]];
-					}
+					batch = batchCache[tempFace[i]];
 				}
 			}
 		}
+	}
+
+	if (!batch) {
+		batch = new FaceBatch();
+		directions[directionId].push(batch);
+		batch.directionId = directionId;
 	}
 
 	batchCache[tempFace[0]] = batch;
 	batchCache[tempFace[1]] = batch;
 	batchCache[tempFace[2]] = batch;
 	batch.faces.push(faceId);
+
+	faceCount++;
 };
 
-var sortFacesByNormal = function(vertices, indices) {
+var sortFacesByNormal = function(vertices, indices, normals) {
 	var directions = [
 		[], // px
 		[], // nx
@@ -359,6 +488,7 @@ var sortFacesByNormal = function(vertices, indices) {
 	];
 
 	var batchCache = [];
+	var duplicateCache = [];
 
 	for (var i = 0; i < indices.length; i += 3) {
 		var i0 = indices[i];
@@ -374,31 +504,32 @@ var sortFacesByNormal = function(vertices, indices) {
 		var normal = BABYLON.Vector3.Cross(v1v0, v2v0); // good direction ?
 		normal.normalize();
 
-		if (Math.abs(normal.x) > Math.abs(normal.y) && Math.abs(normal.x) > Math.abs(normal.z)) {
+		if (Math.abs(normal.x) >= Math.abs(normal.y) && Math.abs(normal.x) >= Math.abs(normal.z)) {
 			if (normal.x >= 0) {
 				// Positive x
-				pushFace(directions, 0, batchCache, i, i0, i1, i2, vertices, indices)
+				pushFace(directions, 0, batchCache, duplicateCache, i / 3, i0, i1, i2, vertices, indices, normals)
 			} else {
 				// Negative x
-				pushFace(directions, 1, batchCache, i, i0, i1, i2, vertices, indices)
-
+				pushFace(directions, 1, batchCache, duplicateCache, i / 3, i0, i1, i2, vertices, indices, normals)
 			}
-		} else if (Math.abs(normal.y) > Math.abs(normal.x) && Math.abs(normal.y) > Math.abs(normal.z)) {
+		} else if (Math.abs(normal.y) >= Math.abs(normal.x) && Math.abs(normal.y) >= Math.abs(normal.z)) {
 			if (normal.y >= 0) {
 				// Positive y
-				pushFace(directions, 2, batchCache, i, i0, i1, i2, vertices, indices)
+				pushFace(directions, 2, batchCache, duplicateCache, i / 3, i0, i1, i2, vertices, indices, normals)
 			} else {
 				// Negative y
-				pushFace(directions, 3, batchCache, i, i0, i1, i2, vertices, indices)
+				pushFace(directions, 3, batchCache, duplicateCache, i / 3, i0, i1, i2, vertices, indices, normals)
 			}
-		} else if (Math.abs(normal.z) > Math.abs(normal.x) && Math.abs(normal.z) > Math.abs(normal.y)) {
+		} else if (Math.abs(normal.z) >= Math.abs(normal.x) && Math.abs(normal.z) >= Math.abs(normal.y)) {
 			if (normal.z >= 0) {
 				// Positive z
-				pushFace(directions, 4, batchCache, i, i0, i1, i2, vertices, indices)
+				pushFace(directions, 4, batchCache, duplicateCache, i / 3, i0, i1, i2, vertices, indices, normals)
 			} else {
 				// Negative z
-				pushFace(directions, 5, batchCache, i, i0, i1, i2, vertices, indices)
+				pushFace(directions, 5, batchCache, duplicateCache, i / 3, i0, i1, i2, vertices, indices, normals)
 			}
+		} else {
+			console.log("should not happen");
 		}
 	}
 

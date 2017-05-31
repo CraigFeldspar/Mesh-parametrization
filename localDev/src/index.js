@@ -53,7 +53,7 @@ var Node = function() {
 	this.image = null;
 };
 
-ImageItem.Padding = 0; // Padding is on bottom and left
+ImageItem.Padding = 3; // Padding is on bottom and left
 
 Node.prototype.getAllNodes = function() {
 	var nodes = [];
@@ -150,9 +150,9 @@ var createScene = function() {
 	camera.attachControl(canvas, true);
 
 	var box, material;
-	for (var i = 0; i < 1; i++) {
-		for (var j = 0; j < 1; j++) {
-			box = BABYLON.Mesh.CreateCylinder("test", 10, 10, 10, 3, 1, scene);
+	for (var i = 0; i < 3; i++) {
+		for (var j = 0; j < 3; j++) {
+			box = BABYLON.Mesh.CreateSphere("test", 3, 10, scene);
 			material = new BABYLON.StandardMaterial("mat" + i + j, scene);
 			material.emissiveColor.copyFromFloats(0.7, 0.7, 0.7);
 			// box.rotation.x = Math.sin(j * i);
@@ -176,7 +176,7 @@ var turnVerticesToDisks = function() {
 
 var uv1ToUv2 = function(scene) {
 	var meshes = scene.meshes;
-	var density = 18; // pixel / scene unit
+	var density = 7; // pixel / scene unit
 
 	var root = Node.CreateRoot();
 
@@ -189,7 +189,7 @@ var uv1ToUv2 = function(scene) {
 		var normals = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
 
 		var uv2s = [];
-		var worldMatrix = mesh.getWorldMatrix();
+		var worldMatrix = mesh.getWorldMatrix(true);
 
 		for (var j = 0; j < vertices.length / 3; j++) {
 			var vertex = new BABYLON.Vector3(vertices[j * 3], vertices[j * 3 + 1], vertices[j * 3 + 2]);
@@ -222,7 +222,7 @@ var uv1ToUv2 = function(scene) {
 
 	for (var i = 0; i < meshes.length; i++) {
 		var mesh = meshes[i];
-		mesh.material.diffuseTexture = new BABYLON.Texture("./test.jpeg", scene);
+		mesh.material.diffuseTexture = debugTexture//new BABYLON.Texture("./test.jpeg", scene);
 	}
 
 	var debugBox = BABYLON.Mesh.CreateBox("debugbox", 10, scene);
@@ -253,6 +253,8 @@ var updateUv2sFromIslands = function(root, mesh, density, vertices, normals) {
 				uv2s[uvInfos[j].index * 2 + 1] = trueUv.y + offsetY;				
 			} else {
 				console.log("duplicate value of uv");
+				console.log("difference x: " + (trueUv.x + offsetX - uv2s[uvInfos[j].index * 2]));
+				console.log("difference y: " + (trueUv.y + offsetY - uv2s[uvInfos[j].index * 2 + 1]));
 			}
 
 			if (trueUv.x < 0 || trueUv.x > width || trueUv.y < 0 || trueUv > height) {
@@ -264,6 +266,7 @@ var updateUv2sFromIslands = function(root, mesh, density, vertices, normals) {
 	mesh.setVerticesData(BABYLON.VertexBuffer.UVKind, uv2s);
 	mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, vertices);
 	mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+	mesh.setIndices(indices);
 	console.log("uv2s Length : " + uv2s.length);
 
 }

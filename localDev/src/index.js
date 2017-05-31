@@ -150,8 +150,8 @@ var createScene = function() {
 	camera.attachControl(canvas, true);
 
 	var box, material;
-	for (var i = 0; i < 3; i++) {
-		for (var j = 0; j < 3; j++) {
+	for (var i = 0; i < 1; i++) {
+		for (var j = 0; j < 1; j++) {
 			box = BABYLON.Mesh.CreateSphere("test", 3, 10, scene);
 			material = new BABYLON.StandardMaterial("mat" + i + j, scene);
 			material.emissiveColor.copyFromFloats(0.7, 0.7, 0.7);
@@ -166,7 +166,8 @@ var createScene = function() {
 	var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, -1, 0), scene);
 
 	uv1ToUv2(scene);
-	scene.debugLayer.show();
+	debugDisks(scene);
+
 	return scene;
 };
 
@@ -537,4 +538,144 @@ var sortFacesByNormal = function(vertices, indices, normals) {
 	}
 
 	return directions;
+}
+
+// Disk hierarchy
+
+var Disk = function(center, radius, normal) {
+	this.center = center;
+	this.radius = radius;
+	this.normal = normal;
+	this.lightMapPosition = null;
+};
+
+Disk.prototype.merge = function(otherDisk) {
+	var center = this.center.add(otherDisk.center).scaleInPlace(1/2);
+	var normal = this.normal.add(otherDisk.normal).scaleInPlace(1/2);
+	var radius = Math.sqrt(this.radius*this.radius + otherDisk.radius * otherDisk.radius);
+	var newDisk = new Disk(center, radius, normal);
+
+	return newDisk;
+}
+
+Disk.prototype.measureSimilarity = function(otherDisk) {
+	// Similarity decrease linearly with squared distance and with angle
+	var vector = (otherDisk.center.subtract(this.center));
+	var similarity = 1 / (vector.x*vector.x + vector.y*vector.y);
+	similarity *= BABYLON.Vector3.Dot(otherDisk.normal, this.normal);
+	return similarity;
+};
+
+Disk.prototype.findBestMatch = function(diskHierarchies) {
+	var score = -Infinity;
+	var candidate = null;
+	var similarity;
+
+	for (var i = 0; i < diskHierarchies.length; i++) {
+		if (diskHierarchies[i].disk === this) {
+			continue;
+		}
+
+		similarity = this.measureSimilarity(diskHierarchies[i].disk);
+		if (similarity > score) {
+			score = similarity;
+			candidate = diskHierarchies[i];
+		}
+	}
+
+	return candidate;
+}
+
+var DiskHierarchy = function(disk) {
+	this.children = [];
+	this.parent = null;
+	this.disk = disk;
+}
+
+DiskHierarchy.prototype.getAllDisks = function(list) {
+	list = list || [];
+
+	if (this.disk) {
+		list.push(this.disk);
+	}
+
+	for (var i = 0; i < this.children.length; i++) {
+		this.children[i].traverse(list);
+	}
+
+	return list;
+}
+
+DiskHierarchy.prototype.traverse = function(fn) {
+	if (this.disk) {
+		fn(this.disk);
+	}
+
+	for (var i = 0; i < this.children.length; i++) {
+		this.children[i].traverse(fn);
+	}
+}
+
+DiskHierarchy.Build = function(disks) {
+	// disks is a list of DiskHierarchy
+	if (disks.length === 1) {
+		return disks[0];
+	}
+
+	var nextLevel = [];
+	while (disks.length) {
+		var disk = disks.pop();
+		var match = disk.disk.findBestMatch(disks);
+
+		var result = disk.disk.merge(match.disk);
+		var newNode = new DiskHierarchy(result);
+
+		disks.splice(disks.indexOf(match), 1);
+
+		// Build references
+		newNode.children.push(disk, match);
+		disk.parent = newNode;
+		match.parent = newNode;
+
+		nextLevel.push(newNode);
+		if (disks.length === 1) {
+			nextLevel.push(disks[0]);
+			disks.length = 0;
+		}
+	}
+
+	return DiskHierarchy.Build(nextLevel);
+}
+
+var rand = function(min, max) {
+	return Math.random()*(max-min) + min;
+}
+
+var generateRandomDisks = function(number, sphereRadius) {
+	sphereRadius = sphereRadius || 100;
+
+	var list = [];
+	for (var i = 0; i < number; i++) {
+		var center = new BABYLON.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1));
+		var normal = new BABYLON.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1));
+		center.normalize().scaleInPlace(rand(0, sphereRadius));
+		normal.normalize();
+
+		var disk = new Disk(center, rand(0.2, 2), normal);
+
+		list.push(new DiskHierarchy(disk));
+	}
+	return list;
+}
+
+var debugDisks = function(scene) {
+	var list = generateRandomDisks(5, 25);
+	var hierarchy = DiskHierarchy.Build(list);
+	hierarchy.traverse(function(disk) {
+		var mesh = BABYLON.Mesh.CreateDisc("disk", disk.radius, 5, scene);
+		mesh.position.copyFrom(disk.center);
+		var axis = BABYLON.Vector3.Cross(disk.normal, new BABYLON.Vector3(0, 0, 1));
+		var angle = Math.acos(disk.normal.z);
+		mesh.rotationQuaternion = BABYLON.Quaternion.RotationAxis(axis, angle);
+	});
 }

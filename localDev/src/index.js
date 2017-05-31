@@ -1,4 +1,6 @@
 /// <reference path="../../dist/preview release/babylon.d.ts"/>
+"use strict";
+
 var TEXTURE_DIMENSIONS = {
 	width: 1024,
 	height: 1024
@@ -11,7 +13,7 @@ var getRandomColor = function() {
         color += letters[Math.floor(Math.random() * 16)];
     }
     return color;
-}
+};
 
 var Rectangle = function(left, top, right, bottom) {
 	this.top = top;
@@ -22,25 +24,25 @@ var Rectangle = function(left, top, right, bottom) {
 
 Rectangle.prototype.getWidth = function() {
 	return this.right - this.left + 1;
-}
+};
 
 Rectangle.prototype.getHeight = function() {
 	return this.top - this.bottom + 1;
-}
+};
 
 Rectangle.prototype.isFitting = function(img) {
 	return (img.height <= this.getHeight()) && (img.width <= this.getWidth());
-}
+};
 
 Rectangle.prototype.perfectFit = function(img) {
 	return (img.height == this.getHeight()) && (img.width == this.getWidth());
-}
+};
 
 var ImageItem = function(id) {
 	this.width = -1;
 	this.height = -1;
 	this.id = id;
-}
+};
 
 var Node = function() {
 	this.child = [null, null]
@@ -48,7 +50,7 @@ var Node = function() {
 	this.image = null;
 };
 
-ImageItem.Padding = 0; // Padding is on bottom and left
+ImageItem.Padding = 15; // Padding is on bottom and left
 
 Node.prototype.getAllNodes = function() {
 	var nodes = [this];
@@ -60,7 +62,7 @@ Node.prototype.getAllNodes = function() {
 	}
 
 	return nodes;
-}
+};
 
 Node.CreateRoot = function() {
 	var node = new Node();
@@ -89,6 +91,8 @@ Node.prototype.insert = function(img) {
 
 		if (this.rc.perfectFit(img)) {
 			this.image = img;
+			console.log(img);
+			console.log(this.rc);
 			return this;
 		}
 
@@ -108,7 +112,7 @@ Node.prototype.insert = function(img) {
 
 		return this.child[0].insert(img);
 	}
-}
+};
 
 var createDebugTexture = function(root, scene) {
     var size = TEXTURE_DIMENSIONS.width;
@@ -128,13 +132,13 @@ var createDebugTexture = function(root, scene) {
     		continue;
     	}
     	context.fillStyle = node.image.id;
-    	context.fillRect(node.rc.top + ImageItem.Padding, node.rc.left + ImageItem.Padding, node.image.width - ImageItem.Padding, node.image.height - ImageItem.Padding);
+    	context.fillRect(node.rc.left + ImageItem.Padding, node.rc.bottom + ImageItem.Padding, node.image.width - ImageItem.Padding, node.image.height - ImageItem.Padding);
     }
 
     debugTexture.update(false);
 
     return debugTexture;
-}
+};
 
 var createScene = function() {
 	var scene = new BABYLON.Scene(engine);
@@ -142,8 +146,8 @@ var createScene = function() {
 	camera.attachControl(canvas, true);
 
 	var box, material;
-	for (var i = 0; i < 1; i++) {
-		for (var j = 0; j < 1; j++) {
+	for (var i = 0; i < 3; i++) {
+		for (var j = 0; j < 3; j++) {
 			box = BABYLON.Mesh.CreateSphere("test", 5, 8, scene);
 			material = new BABYLON.StandardMaterial("mat" + i + j, scene);
 			material.emissiveColor.copyFromFloats(0.7, 0.7, 0.7);
@@ -164,11 +168,11 @@ var createScene = function() {
 
 var turnVerticesToDisks = function() {
 	var vertices = scene.vertices;
-}
+};
 
 var uv1ToUv2 = function(scene) {
 	var meshes = scene.meshes;
-	var density = 15; // pixel / scene unit
+	var density = 25; // pixel / scene unit
 
 	var root = Node.CreateRoot();
 
@@ -197,7 +201,7 @@ var uv1ToUv2 = function(scene) {
 	debugBox.position.y += 15;
 	debugBox.material = new BABYLON.StandardMaterial("debug", scene);
 	debugBox.material.diffuseTexture = debugTexture;
-}
+};
 
 var makeImagesFromUvIslands = function(uvIslands, density) {
 	var images = [];
@@ -262,7 +266,7 @@ var projectInUvSpace = function(directions, indices, vertices) {
 	}
 
 	return result;
-}
+};
 
 
 var FaceBatch = function() {

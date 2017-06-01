@@ -229,7 +229,8 @@ var uv1ToUv2 = function(scene) {
 	var debugBox = BABYLON.Mesh.CreateBox("debugbox", 10, scene);
 	debugBox.position.y += 15;
 	debugBox.material = new BABYLON.StandardMaterial("debug", scene);
-	debugBox.material.diffuseTexture = debugTexture;
+	debugBox.material.diffuseTexture = createUvTexture(scene);
+	// debugBox.material.diffuseTexture = debugTexture;
 };
 
 var updateUv2sFromIslands = function(root, mesh, density, vertices, normals) {
@@ -678,4 +679,138 @@ var debugDisks = function(scene) {
 		var angle = Math.acos(disk.normal.z);
 		mesh.rotationQuaternion = BABYLON.Quaternion.RotationAxis(axis, angle);
 	});
+}
+
+var createUvTexture = function(scene) {
+	var texture = new BABYLON.RenderTargetTexture("debug", TEXTURE_DIMENSIONS, scene, false, true, BABYLON.Engine.TEXTURETYPE_UNSIGNED_INT, false, BABYLON.Texture.NEAREST_SAMPLINGMODE, true, false);
+	texture.refreshRate = 1;
+	// texture.resetRefreshCounter();
+	texture.renderList = null;
+	scene.customRenderTargets.push(texture);
+
+	var effect, cachedDefines;
+
+	var isReady = function(subMesh, useInstances) {
+	    var material = subMesh.getMaterial();
+	    if (material.disableDepthWrite) {
+	        return false;
+	    }
+
+	    var defines = [];
+
+	    var attribs = [BABYLON.VertexBuffer.PositionKind];
+
+	    var mesh = subMesh.getMesh();
+	    var scene = mesh.getScene();
+
+	    // Alpha test
+	    if (material && material.needAlphaTesting()) {
+	        defines.push("#define ALPHATEST");
+	        if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UVKind)) {
+	            attribs.push(BABYLON.VertexBuffer.UVKind);
+	            defines.push("#define UV1");
+	        }
+	        if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UV2Kind)) {
+	            attribs.push(BABYLON.VertexBuffer.UV2Kind);
+	            defines.push("#define UV2");
+	        }
+	    }
+
+	    // Bones
+	    if (mesh.useBones && mesh.computeBonesUsingShaders) {
+	        attribs.push(BABYLON.VertexBuffer.MatricesIndicesKind);
+	        attribs.push(BABYLON.VertexBuffer.MatricesWeightsKind);
+	        if (mesh.numBoneInfluencers > 4) {
+	            attribs.push(BABYLON.VertexBuffer.MatricesIndicesExtraKind);
+	            attribs.push(BABYLON.VertexBuffer.MatricesWeightsExtraKind);
+	        }
+	        defines.push("#define NUM_BONE_INFLUENCERS " + mesh.numBoneInfluencers);
+	        defines.push("#define BonesPerMesh " + (mesh.skeleton.bones.length + 1));
+	    } else {
+	        defines.push("#define NUM_BONE_INFLUENCERS 0");
+	    }
+
+	    // Instances
+	    if (useInstances) {
+	        defines.push("#define INSTANCES");
+	        attribs.push("world0");
+	        attribs.push("world1");
+	        attribs.push("world2");
+	        attribs.push("world3");
+	    }
+
+	    // Get correct effect      
+	    var join = defines.join("\n");
+	    if (cachedDefines !== join) {
+	        cachedDefines = join;
+	        effect = scene.getEngine().createEffect("depth",
+	            attribs,
+	            ["world", "mBones", "viewProjection", "diffuseMatrix", "far"],
+	            ["diffuseSampler"], join);
+	    }
+
+	    return effect.isReady();
+	}
+
+	// Custom render function
+	var renderSubMesh = function(subMesh) {
+	    var mesh = subMesh.getRenderingMesh();
+	    var engine = scene.getEngine();
+
+	    // Culling
+	    engine.setState(subMesh.getMaterial().backFaceCulling);
+
+	    // Managing instances
+	    var batch = mesh._getInstancesRenderList(subMesh._id);
+
+	    if (batch.mustReturn) {
+	        return;
+	    }
+
+	    var hardwareInstancedRendering = (engine.getCaps().instancedArrays !== null) && (batch.visibleInstances[subMesh._id] !== null);
+
+	    if (isReady(subMesh, hardwareInstancedRendering)) {
+	        engine.enableEffect(effect);
+	        mesh._bind(subMesh, effect, BABYLON.Material.TriangleFillMode);
+	        var material = subMesh.getMaterial();
+
+	        effect.setMatrix("viewProjection", scene.getTransformMatrix());
+
+	        effect.setFloat("far", scene.activeCamera.maxZ);
+
+	        // Alpha test
+	        if (material && material.needAlphaTesting()) {
+	            var alphaTexture = material.getAlphaTestTexture();
+	            effect.setTexture("diffuseSampler", alphaTexture);
+	            effect.setMatrix("diffuseMatrix", alphaTexture.getTextureMatrix());
+	        }
+
+	        // Bones
+	        if (mesh.useBones && mesh.computeBonesUsingShaders) {
+	            effect.setMatrices("mBones", mesh.skeleton.getTransformMatrices(mesh));
+	        }
+
+	        // Draw
+	        mesh._processRendering(subMesh, effect, BABYLON.Material.TriangleFillMode, batch, hardwareInstancedRendering,
+	            function (isInstance, world) { effect.setMatrix("world", world) });
+	    }
+	};
+
+	texture.customRenderFunction = function(opaqueSubMeshes, alphaTestSubMeshes) {
+	    var index;
+
+	    for (index = 0; index < opaqueSubMeshes.length; index++) {
+	        renderSubMesh(opaqueSubMeshes.data[index]);
+	    }
+
+	    for (index = 0; index < alphaTestSubMeshes.length; index++) {
+	        renderSubMesh(alphaTestSubMeshes.data[index]);
+	    }
+	};
+
+	// TriangleFillMode
+	// WireFrameFillMode
+	// PointFillMode
+
+	return texture;
 }

@@ -45,6 +45,7 @@ var ImageItem = function(id) {
 	this.uvInfos = [];
 	this.minWorld = null;
 	this.maxWorld = null;
+	this.mesh = null;
 };
 
 var Node = function() {
@@ -53,18 +54,18 @@ var Node = function() {
 	this.image = null;
 };
 
-ImageItem.Padding = 3; // Padding is on bottom and left
+ImageItem.Padding = 2; // Padding is on bottom and left
 
-Node.prototype.getAllNodes = function() {
+Node.prototype.getAllNodes = function(mesh) {
 	var nodes = [];
-	if (this.image) {
+	if (this.image && (!mesh || this.image.mesh === mesh)) {
 		nodes.push(this);
 	}
 	if (this.child[0]) {
-		nodes = nodes.concat(this.child[0].getAllNodes());
+		nodes = nodes.concat(this.child[0].getAllNodes(mesh));
 	}
 	if (this.child[1]) {
-		nodes = nodes.concat(this.child[1].getAllNodes());
+		nodes = nodes.concat(this.child[1].getAllNodes(mesh));
 	}
 
 	return nodes;
@@ -150,22 +151,25 @@ var createScene = function() {
 	camera.attachControl(canvas, true);
 
 	var box, material;
-	for (var i = 0; i < 1; i++) {
-		for (var j = 0; j < 1; j++) {
-			box = BABYLON.Mesh.CreateSphere("test", 3, 10, scene);
+	var meshes = [];
+	for (var i = 0; i < 2; i++) {
+		for (var j = 0; j < 2; j++) {
+			box = BABYLON.Mesh.CreateSphere("test", 7, 10, scene);
 			material = new BABYLON.StandardMaterial("mat" + i + j, scene);
 			material.emissiveColor.copyFromFloats(0.7, 0.7, 0.7);
 			// box.rotation.x = Math.sin(j * i);
 			// box.rotation.z = Math.cos(i + j);
-			box.position.x += i * 5 - 12.5;
-			box.position.z += j * 5 - 12.5;
+			box.position.x += i * 5;
+			box.position.z += j * 5;
 			box.material = material;
+			box.computeWorldMatrix(true);
+			meshes.push(box);
 		}
 	}
 
 	var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, -1, 0), scene);
 
-	uv1ToUv2(scene);
+	uv1ToUv2(scene, meshes);
 	debugDisks(scene);
 
 	return scene;
@@ -175,8 +179,7 @@ var turnVerticesToDisks = function() {
 	var vertices = scene.vertices;
 };
 
-var uv1ToUv2 = function(scene) {
-	var meshes = scene.meshes;
+var uv1ToUv2 = function(scene, meshes) {
 	var density = 7; // pixel / scene unit
 
 	var root = Node.CreateRoot();
@@ -192,7 +195,7 @@ var uv1ToUv2 = function(scene) {
 		var uv2s = [];
 		var worldMatrix = mesh.getWorldMatrix(true);
 
-		for (var j = 0; j < vertices.length / 3; j++) {
+/*		for (var j = 0; j < vertices.length / 3; j++) {
 			var vertex = new BABYLON.Vector3(vertices[j * 3], vertices[j * 3 + 1], vertices[j * 3 + 2]);
 
 			var worldVertex = BABYLON.Vector3.TransformCoordinates(vertex, worldMatrix);
@@ -200,12 +203,13 @@ var uv1ToUv2 = function(scene) {
 			vertices[j * 3 + 1] = worldVertex.y;
 			vertices[j * 3 + 2] = worldVertex.z;
 		}
-
+*/
 		var directions = sortFacesByNormal(vertices, indices, normals);
 		var uvIslands = projectInUvSpace(directions, indices, vertices);
 		var images = makeImagesFromUvIslands(uvIslands, density);
 
 		for (var j = 0; j < images.length; j++) {
+			images[j].mesh = mesh;
 			root.insert(images[j]);
 		}
 
@@ -221,20 +225,20 @@ var uv1ToUv2 = function(scene) {
 
 	var debugTexture = createDebugTexture(root, scene);
 
-	for (var i = 0; i < meshes.length; i++) {
-		var mesh = meshes[i];
-		mesh.material.diffuseTexture = debugTexture//new BABYLON.Texture("./test.jpeg", scene);
-	}
-
 	var debugBox = BABYLON.Mesh.CreateBox("debugbox", 10, scene);
 	debugBox.position.y += 15;
 	debugBox.material = new BABYLON.StandardMaterial("debug", scene);
-	debugBox.material.diffuseTexture = createUvTexture(scene);
+	debugBox.material.diffuseTexture = createUvTexture(scene, meshes);
 	// debugBox.material.diffuseTexture = debugTexture;
+
+	for (var i = 0; i < meshes.length; i++) {
+		var mesh = meshes[i];
+		mesh.material.diffuseTexture = debugBox.material.diffuseTexture//new BABYLON.Texture("./test.jpeg", scene);
+	}
 };
 
 var updateUv2sFromIslands = function(root, mesh, density, vertices, normals) {
-	var nodes = root.getAllNodes();
+	var nodes = root.getAllNodes(mesh);
 	var indices = mesh.getIndices();
 	var uv2s = [];
 
@@ -681,40 +685,38 @@ var debugDisks = function(scene) {
 	});
 }
 
-var createUvTexture = function(scene) {
-	var texture = new BABYLON.RenderTargetTexture("debug", TEXTURE_DIMENSIONS, scene, false, true, BABYLON.Engine.TEXTURETYPE_UNSIGNED_INT, false, BABYLON.Texture.NEAREST_SAMPLINGMODE, true, false);
+var createUvTexture = function(scene, renderList) {
+	var options = {
+        generateMipMaps: false,
+        types: [BABYLON.Engine.TEXTURETYPE_FLOAT, BABYLON.Engine.TEXTURETYPE_UNSIGNED_INT],
+        samplingModes: [BABYLON.Texture.BILINEAR_SAMPLINGMODE, BABYLON.Texture.BILINEAR_SAMPLINGMODE],
+        generateDepthBuffer: false,
+        generateStencilBuffer: false,
+        generateDepthTexture: false,
+        textureCount: 2
+    };
+
+	var texture = new BABYLON.MultiRenderTarget("debug", TEXTURE_DIMENSIONS, 2, scene);
 	texture.refreshRate = 1;
 	// texture.resetRefreshCounter();
-	texture.renderList = null;
+	texture.renderList = renderList;
 	scene.customRenderTargets.push(texture);
 
 	var effect, cachedDefines;
 
 	var isReady = function(subMesh, useInstances) {
 	    var material = subMesh.getMaterial();
-	    if (material.disableDepthWrite) {
-	        return false;
-	    }
 
 	    var defines = [];
 
-	    var attribs = [BABYLON.VertexBuffer.PositionKind];
-
 	    var mesh = subMesh.getMesh();
 	    var scene = mesh.getScene();
-
-	    // Alpha test
-	    if (material && material.needAlphaTesting()) {
-	        defines.push("#define ALPHATEST");
-	        if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UVKind)) {
-	            attribs.push(BABYLON.VertexBuffer.UVKind);
-	            defines.push("#define UV1");
-	        }
-	        if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UV2Kind)) {
-	            attribs.push(BABYLON.VertexBuffer.UV2Kind);
-	            defines.push("#define UV2");
-	        }
+	    if (!mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UVKind)) {
+	    	return false;
 	    }
+
+	    var attribs = [BABYLON.VertexBuffer.PositionKind, BABYLON.VertexBuffer.NormalKind, BABYLON.VertexBuffer.UVKind];
+
 
 	    // Bones
 	    if (mesh.useBones && mesh.computeBonesUsingShaders) {
@@ -743,10 +745,10 @@ var createUvTexture = function(scene) {
 	    var join = defines.join("\n");
 	    if (cachedDefines !== join) {
 	        cachedDefines = join;
-	        effect = scene.getEngine().createEffect("depth",
+	        effect = scene.getEngine().createEffect("uv",
 	            attribs,
-	            ["world", "mBones", "viewProjection", "diffuseMatrix", "far"],
-	            ["diffuseSampler"], join);
+	            ["world", "mBones", "viewProjection"],
+	            [], join);
 	    }
 
 	    return effect.isReady();
@@ -758,7 +760,7 @@ var createUvTexture = function(scene) {
 	    var engine = scene.getEngine();
 
 	    // Culling
-	    engine.setState(subMesh.getMaterial().backFaceCulling);
+	    engine.setState(false);
 
 	    // Managing instances
 	    var batch = mesh._getInstancesRenderList(subMesh._id);
@@ -771,19 +773,8 @@ var createUvTexture = function(scene) {
 
 	    if (isReady(subMesh, hardwareInstancedRendering)) {
 	        engine.enableEffect(effect);
-	        mesh._bind(subMesh, effect, BABYLON.Material.TriangleFillMode);
-	        var material = subMesh.getMaterial();
 
 	        effect.setMatrix("viewProjection", scene.getTransformMatrix());
-
-	        effect.setFloat("far", scene.activeCamera.maxZ);
-
-	        // Alpha test
-	        if (material && material.needAlphaTesting()) {
-	            var alphaTexture = material.getAlphaTestTexture();
-	            effect.setTexture("diffuseSampler", alphaTexture);
-	            effect.setMatrix("diffuseMatrix", alphaTexture.getTextureMatrix());
-	        }
 
 	        // Bones
 	        if (mesh.useBones && mesh.computeBonesUsingShaders) {
@@ -791,7 +782,14 @@ var createUvTexture = function(scene) {
 	        }
 
 	        // Draw
+	        mesh._bind(subMesh, effect, BABYLON.Material.TriangleFillMode);
 	        mesh._processRendering(subMesh, effect, BABYLON.Material.TriangleFillMode, batch, hardwareInstancedRendering,
+	            function (isInstance, world) { effect.setMatrix("world", world) });
+	        mesh._bind(subMesh, effect, BABYLON.Material.WireFrameFillMode);
+	        mesh._processRendering(subMesh, effect, BABYLON.Material.WireFrameFillMode, batch, hardwareInstancedRendering,
+	            function (isInstance, world) { effect.setMatrix("world", world) });
+	        mesh._bind(subMesh, effect, BABYLON.Material.PointFillMode);
+	        mesh._processRendering(subMesh, effect, BABYLON.Material.PointFillMode, batch, hardwareInstancedRendering,
 	            function (isInstance, world) { effect.setMatrix("world", world) });
 	    }
 	};
@@ -808,9 +806,5 @@ var createUvTexture = function(scene) {
 	    }
 	};
 
-	// TriangleFillMode
-	// WireFrameFillMode
-	// PointFillMode
-
-	return texture;
+	return texture.textures[0];
 }

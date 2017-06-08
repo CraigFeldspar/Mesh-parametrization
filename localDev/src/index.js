@@ -2,8 +2,8 @@
 "use strict";
 
 var TEXTURE_DIMENSIONS = {
-	width: 1024,
-	height: 1024
+	width: 512,
+	height: 512
 };
 
 var getRandomColor = function() {
@@ -170,7 +170,7 @@ var createScene = function() {
 	var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, -1, 0), scene);
 
 	uv1ToUv2(scene, meshes);
-	debugDisks(scene);
+	// debugDisks(scene);
 
 	return scene;
 };
@@ -180,7 +180,7 @@ var turnVerticesToDisks = function() {
 };
 
 var uv1ToUv2 = function(scene, meshes) {
-	var density = 7; // pixel / scene unit
+	var density = 1; // pixel / scene unit
 
 	var root = Node.CreateRoot();
 
@@ -228,13 +228,16 @@ var uv1ToUv2 = function(scene, meshes) {
 	var debugBox = BABYLON.Mesh.CreateBox("debugbox", 10, scene);
 	debugBox.position.y += 15;
 	debugBox.material = new BABYLON.StandardMaterial("debug", scene);
-	debugBox.material.diffuseTexture = createUvTexture(scene, meshes);
-	// debugBox.material.diffuseTexture = debugTexture;
-
+	// debugBox.material.diffuseTexture = createUvTexture(scene, meshes);
+	// debugBox.material.diffuseTexture = createUvTexture(scene, meshes);
+	var textures = createUvTexture(scene, meshes);
 	for (var i = 0; i < meshes.length; i++) {
 		var mesh = meshes[i];
-		mesh.material.diffuseTexture = debugBox.material.diffuseTexture//new BABYLON.Texture("./test.jpeg", scene);
+		mesh.material.diffuseTexture = textures[0];//new BABYLON.Texture("./test.jpeg", scene);
 	}
+	buildDisksFromMRT(textures, density, scene);
+	// debugBox.material.diffuseTexture = debugTexture;
+
 };
 
 var updateUv2sFromIslands = function(root, mesh, density, vertices, normals) {
@@ -251,17 +254,16 @@ var updateUv2sFromIslands = function(root, mesh, density, vertices, normals) {
 		var minWorld = nodes[i].image.minWorld;
 		var maxWorld = nodes[i].image.maxWorld;
 
-		console.log(offsetX, offsetY);
 		for (var j = 0; j < uvInfos.length; j++) {
 			var trueUv = uvInfos[j].uv.subtract(minWorld).multiplyInPlace(new BABYLON.Vector2(1 / TEXTURE_DIMENSIONS.width, 1 / TEXTURE_DIMENSIONS.height)).scaleInPlace(density);
 			if (uv2s[uvInfos[j].index * 2] === undefined) {
 				uv2s[uvInfos[j].index * 2] = trueUv.x + offsetX;
 				uv2s[uvInfos[j].index * 2 + 1] = trueUv.y + offsetY;				
 			} else {
-				console.log("duplicate value of uv");
+/*				console.log("duplicate value of uv");
 				console.log("difference x: " + (trueUv.x + offsetX - uv2s[uvInfos[j].index * 2]));
 				console.log("difference y: " + (trueUv.y + offsetY - uv2s[uvInfos[j].index * 2 + 1]));
-			}
+*/			}
 
 			if (trueUv.x < 0 || trueUv.x > width || trueUv.y < 0 || trueUv > height) {
 				console.log("out of bounds");
@@ -700,6 +702,10 @@ var createUvTexture = function(scene, renderList) {
 	texture.refreshRate = 1;
 	// texture.resetRefreshCounter();
 	texture.renderList = renderList;
+	// set default depth value to 1.0 (far away)
+	// texture.onClearObservable.add(function(engine) {
+	//     engine.clear(new BABYLON.Color4(0.0, 0.0, 0.0, 0.0), true, true, true);
+	// });
 	scene.customRenderTargets.push(texture);
 
 	var effect, cachedDefines;
@@ -806,5 +812,46 @@ var createUvTexture = function(scene, renderList) {
 	    }
 	};
 
-	return texture.textures[0];
+	return texture.textures;
 }
+
+var readPixelsFloat = function(x, y, width, height, engine) {
+    var data = new Float32Array(height * width * 4);
+    engine._gl.readPixels(x, y, width, height, engine._gl.RGBA, engine._gl.FLOAT, data);
+    return data;
+}
+
+var buildDisksFromMRT = function(textures, density, scene) {
+	// normal has index 0, position has index 1
+	var buffers = [];
+	var engine = scene.getEngine();
+	var width, height;
+	for (var i = 0; i < 1; i++) {
+		var texture = textures[i];
+		width = texture._texture._width;
+		height = texture._texture._height;
+		engine.bindUnboundFramebuffer(texture._texture._framebuffer);
+		engine._gl.readBuffer(engine._gl["COLOR_AT²TACHMENT" + i]);
+		buffers.push(readPixelsFloat(0, 0, width, height, engine));
+		// engine.bindUnboundFramebuffer(null);
+	}
+
+	var normalOffset = new BABYLON.Vector3(-1, -1, -1);
+	for (var i = 0; i < height; i++) {
+		for (var j = 0; j < width * 4; j+=4) {
+			if ((buffers[0][i*width*4 + j] + buffers[0][i*width*4 + j + 1] + buffers[0][i*width*4 +j + 2]) === 0) {
+				// this is an unfilled pixel
+				continue;
+			}
+			console.log("not null!");
+			var normal = new BABYLON.Vector3(buffers[0][i*width*4 + j], buffers[0][i*width*4 + j + 1], buffers[0][i*width*4 +j + 2]);
+			normal.scaleInPlace(2).subtractInPlace(normalOffset);
+			var position = new BABYLON.Vector3(buffers[1][i*width*4 + j], buffers[1][i*width*4 + j + 1], buffers[1][i*width*4 +j + 2]);
+			var mesh = BABYLON.Mesh.CreateDisc("disk", 1, 5, scene);
+			mesh.position = position;
+			var axis = BABYLON.Vector3.Cross(normal, new BABYLON.Vector3(0, 0, 1));
+			var angle = Math.acos(normal.z);
+			mesh.rotationQuaternion = BABYLON.Quaternion.RotationAxis(axis, angle);		
+		}
+	}
+};

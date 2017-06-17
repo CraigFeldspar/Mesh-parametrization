@@ -2,8 +2,8 @@
 "use strict";
 
 var TEXTURE_DIMENSIONS = {
-	width: 512,
-	height: 512
+	width: 64,
+	height: 64
 };
 
 var getRandomColor = function() {
@@ -180,7 +180,7 @@ var turnVerticesToDisks = function() {
 };
 
 var uv1ToUv2 = function(scene, meshes) {
-	var density = 1; // pixel / scene unit
+	var density = 0.5; // pixel / scene unit
 
 	var root = Node.CreateRoot();
 
@@ -230,12 +230,11 @@ var uv1ToUv2 = function(scene, meshes) {
 	debugBox.material = new BABYLON.StandardMaterial("debug", scene);
 	// debugBox.material.diffuseTexture = createUvTexture(scene, meshes);
 	// debugBox.material.diffuseTexture = createUvTexture(scene, meshes);
-	var textures = createUvTexture(scene, meshes);
+	var textures = createUvTexture(scene, meshes, density);
 	for (var i = 0; i < meshes.length; i++) {
 		var mesh = meshes[i];
 		mesh.material.diffuseTexture = textures[0];//new BABYLON.Texture("./test.jpeg", scene);
 	}
-	buildDisksFromMRT(textures, density, scene);
 	// debugBox.material.diffuseTexture = debugTexture;
 
 };
@@ -687,7 +686,7 @@ var debugDisks = function(scene) {
 	});
 }
 
-var createUvTexture = function(scene, renderList) {
+var createUvTexture = function(scene, renderList, density) {
 	var options = {
         generateMipMaps: false,
         types: [BABYLON.Engine.TEXTURETYPE_FLOAT, BABYLON.Engine.TEXTURETYPE_UNSIGNED_INT],
@@ -699,7 +698,7 @@ var createUvTexture = function(scene, renderList) {
     };
 
 	var texture = new BABYLON.MultiRenderTarget("debug", TEXTURE_DIMENSIONS, 2, scene);
-	texture.refreshRate = 1;
+	texture.refreshRate = 0;
 	// texture.resetRefreshCounter();
 	texture.renderList = renderList;
 	// set default depth value to 1.0 (far away)
@@ -707,7 +706,7 @@ var createUvTexture = function(scene, renderList) {
 	//     engine.clear(new BABYLON.Color4(0.0, 0.0, 0.0, 0.0), true, true, true);
 	// });
 	scene.customRenderTargets.push(texture);
-
+	texture.onAfterRender = buildDisksFromMRT.bind(texture, texture.textures, density, scene);
 	var effect, cachedDefines;
 
 	var isReady = function(subMesh, useInstances) {
@@ -826,20 +825,20 @@ var buildDisksFromMRT = function(textures, density, scene) {
 	var buffers = [];
 	var engine = scene.getEngine();
 	var width, height;
-	for (var i = 0; i < 1; i++) {
+	for (var i = 0; i < textures.length; i++) {
 		var texture = textures[i];
 		width = texture._texture._width;
 		height = texture._texture._height;
 		engine.bindUnboundFramebuffer(texture._texture._framebuffer);
-		engine._gl.readBuffer(engine._gl["COLOR_AT²TACHMENT" + i]);
+		engine._gl.readBuffer(engine._gl["COLOR_ATTACHMENT" + i]);
 		buffers.push(readPixelsFloat(0, 0, width, height, engine));
-		// engine.bindUnboundFramebuffer(null);
+		engine.bindUnboundFramebuffer(null);
 	}
 
-	var normalOffset = new BABYLON.Vector3(-1, -1, -1);
+	var normalOffset = new BABYLON.Vector3(1, 1, 1);
 	for (var i = 0; i < height; i++) {
 		for (var j = 0; j < width * 4; j+=4) {
-			if ((buffers[0][i*width*4 + j] + buffers[0][i*width*4 + j + 1] + buffers[0][i*width*4 +j + 2]) === 0) {
+			if ((buffers[0][i*width*4 + j + 3]) === 0) {
 				// this is an unfilled pixel
 				continue;
 			}
